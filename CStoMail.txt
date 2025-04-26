@@ -1,0 +1,153 @@
+function onOpen() {
+  SpreadsheetApp.getUi()
+      .createMenu('CS Mail Actions')
+      .addItem('Prepare CS mail Draft', 'createGmailDraftFromSelectedRow')
+      .addToUi();
+}
+
+function createGmailDraftFromSelectedRow() {
+  var ui = SpreadsheetApp.getUi();
+
+  // Ask the user to choose the language using a prompt
+  var result = ui.prompt(
+      'Choose Email Language',
+      'Enter "en" for English or "it" for Italian:',
+      ui.ButtonSet.OK_CANCEL
+  );
+
+  var language = '';
+  if (result.getSelectedButton() == ui.Button.OK) {
+    language = result.getResponseText().toLowerCase();
+    if (language !== 'en' && language !== 'it') {
+      ui.alert('Invalid language entered. Please try again.');
+      return;
+    }
+    processEmail(language);
+  }
+}
+
+function processEmail(language) {
+  var ui = SpreadsheetApp.getUi();
+
+  // Get the active spreadsheet
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getActiveSheet();
+  var range = sheet.getActiveRange();
+
+  if (!range || range.getNumRows() !== 1) {
+    ui.alert('Please select a single row to prepare the email from.');
+    return;
+  }
+
+  var rowNumber = range.getRow();
+  if (rowNumber < 3) {
+    ui.alert('Please select a data row (below the headers).');
+    return;
+  }
+
+  // Define the CORRECTED column indices
+  var professorMailColumn = 2; // Column B
+  var courseColumn = 4;       // Column D
+  var responsibleColumn = 8;  // Column H
+  var dateColumn = 10;        // Column J
+
+  // Get the data from the selected row
+  var professorMail = sheet.getRange(rowNumber, professorMailColumn).getValue();
+  var course = sheet.getRange(rowNumber, courseColumn).getValue();
+  var responsibleName = sheet.getRange(rowNumber, responsibleColumn).getValue();
+  var lessonDate = sheet.getRange(rowNumber, dateColumn).getValue();
+  var professorNamePart = professorMail.split('@')[0]; // Get the part before the @
+
+  var professorFirstName = '';
+  var professorLastName = '';
+
+  if (professorNamePart.includes('.')) {
+    // Handle format word1.word2 or word1.word2 (before @)
+    var nameParts = professorNamePart.split('.');
+    if (nameParts.length >= 2) {
+      professorFirstName = nameParts[0].toLowerCase().charAt(0).toUpperCase() + nameParts[0].toLowerCase().slice(1);
+      professorLastName = nameParts[1].toLowerCase().charAt(0).toUpperCase() + nameParts[1].toLowerCase().slice(1);
+    } else if (nameParts.length === 1) {
+      professorLastName = nameParts[0].toLowerCase().charAt(0).toUpperCase() + nameParts[0].toLowerCase().slice(1);
+    }
+  } else {
+    // Handle the uppercase SURNAME FIRSTNAME ... format
+    var nameParts = professorNamePart.split(' ');
+    professorLastName = nameParts[0] ? nameParts[0].toLowerCase().charAt(0).toUpperCase() + nameParts[0].toLowerCase().slice(1) : '';
+    professorFirstName = nameParts[1] ? nameParts[1].toLowerCase().charAt(0).toUpperCase() + nameParts[1].toLowerCase().slice(1) : '';
+    if (nameParts.length > 2) {
+      professorFirstName += ' ' + nameParts.slice(2).map(function(name) {
+        return name.toLowerCase().charAt(0).toUpperCase() + name.toLowerCase().slice(1);
+      }).join(' ');
+    }
+  }
+
+  var professorFullName = professorFirstName ? professorFirstName + ' ' + professorLastName : professorLastName;
+
+  // Format the date as DD-MM-YYYY
+  var formattedDate = Utilities.formatDate(lessonDate, Session.getTimeZone(), 'dd-MM-yyyy');
+
+  // Extract the time part (HH:MM) from the lessonDate
+  var lessonTimeString = Utilities.formatDate(lessonDate, Session.getTimeZone(), 'HH:mm');
+
+  // Assume a 2-hour lecture duration if no end time is specified
+  var lessonHours;
+  if (lessonTimeString.indexOf('-') === -1) {
+    var startTimeParts = lessonTimeString.split(':');
+    if (startTimeParts.length === 2 && !isNaN(parseInt(startTimeParts[0])) && !isNaN(parseInt(startTimeParts[1]))) {
+      var startHour = parseInt(startTimeParts[0]);
+      var startMinute = parseInt(startTimeParts[1]);
+      var endHour = startHour + 2;
+      var endMinute = startMinute;
+      var formattedEndHour = (endHour % 24).toString().padStart(2, '0');
+      var formattedEndMinute = endMinute.toString().padStart(2, '0');
+      lessonHours = lessonTimeString + '-' + formattedEndHour + ':' + formattedEndMinute;
+    } else {
+      lessonHours = lessonTimeString;
+    }
+  } else {
+    lessonHours = lessonTimeString;
+  }
+
+  // Define the CC email address
+  var ccEmail = 'kuzeykoru@aiesec.net'; // Using a different CC address as requested
+
+  // Compose the email body based on the selected language
+  var body;
+  if (language === 'en') {
+    body = 'Dear Professor ' + professorLastName + ',\n\n' +
+           'My name is ' + responsibleName + ', a student at the University of Padua and member of AIESEC in Padova.\n\n' +
+           'AIESEC is the biggest youth organisation in the world present in more than 100 different countries: we propose international volunteering and internship projects for university students so that they can put into practical use the knowledge that they acquired during their studies.\n\n' +
+           'I write, therefore, to kindly ask for the willingness to give us five minutes at the beginning or the mid-break (if you have one) of your lesson of \n\n' + course + '\nOf the day ' + formattedDate + ' between ' + lessonHours + '\n\n' +
+           'I would be grateful if you could let me know if you are available and if the day I suggested might work in order to present this opportunity to your students.\n\n' +
+           'For additional information you might check our site: www.aiesec.it but, in any case, I’m always available for a clarifying interview.\n\n' +
+           'While waiting for your answer, thank you for your attention.\n\n' +
+           'Warm regards,\n\n' +
+           '' + responsibleName;
+  } else if (language === 'it') {
+    body = 'Gentile Prof. ' + professorLastName + ',\n\n' +
+           'Mi chiamo ' + responsibleName + ', sono una studentessa dell\'Università di Padova e membro di AIESEC a Padova.\n\n' +
+           'AIESEC è la più grande organizzazione giovanile al mondo, presente in oltre 100 paesi: proponiamo progetti internazionali di volontariato e tirocinio per studenti universitari, offrendo loro l\'opportunità di mettere in pratica le conoscenze acquisite durante gli studi.\n\n' +
+           'Le scrivo, quindi, per chiederLe gentilmente la disponibilità a concederci cinque minuti all\'inizio o durante la pausa (se prevista) della Sua lezione di \n\n' + course + '\nDel giorno ' + formattedDate + ' tra le ore ' + lessonHours + '\n\n' +
+           'Le sarei grato/a se potesse farmi sapere se è disponibile e se il giorno che Le ho indicato potrebbe andar bene per presentare questa opportunità ai Suoi studenti.\n\n' +
+           'Per maggiori informazioni, può consultare il nostro sito web: www.aiesec.it. In ogni caso, resto a Sua completa disposizione per un colloquio chiarificatore.\n\n' +
+           'In attesa di una Sua cortese risposta, La ringrazio per l\'attenzione.\n\n' +
+           'Cordiali saluti,\n\n' +
+           '' + responsibleName;
+  } else {
+    ui.alert('Invalid language selected.');
+    return;
+  }
+
+  // Construct the Gmail compose URL
+  var gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(professorMail) +
+                 '&cc=' + encodeURIComponent(ccEmail) +
+                 '&su=' + encodeURIComponent('Formal Request') + '&body=' + encodeURIComponent(body);
+
+  // Show an alert with the link
+  ui.alert(
+      'Gmail Draft Link',
+      'Copy the following link and paste it into your browser to open the pre-filled email:\n\n' + gmailUrl,
+      ui.ButtonSet.OK
+  );
+}
