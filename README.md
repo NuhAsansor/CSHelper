@@ -1,4 +1,4 @@
-# CStoCalendar
+#CSHelper
 Script for AIESEC in Italy MKTG Tool's CS Page-Google Calendar Synchronisation
 
 My name is Koru, the MKTG VP of AIESEC in Padova. This is a small script I wrote on Google's Apps Script for recording the booked Class Shouts of '💡CS funnel tracking' sheet of B2C/MKT Tracking Tool onto a Google Calendar dedicated to a team/Area. 
