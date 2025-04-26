@@ -1,0 +1,49 @@
+function onEdit(e) {
+  // Check if the event object and its source property are defined
+  if (!e || !e.source) {
+    console.log("onEdit function was triggered without a valid edit event.");
+    return; // Exit the function if there's no valid event
+  }
+
+  const sheet = e.source.getActiveSheet();
+  const editedCell = e.range;
+
+  // Check if the edited cell is in Column I (Status)
+  if (editedCell.getColumn() !== 9 || sheet.getName() !== '💡CS funnel tracking') return;
+
+  const row = editedCell.getRow();
+  const status = editedCell.getValue().toString().toLowerCase();
+
+  if (status === 'positive response') {
+    const title = sheet.getRange(row, 8).getValue() + " CS"; // Column H
+    const professor = sheet.getRange(row, 1).getValue(); // Column A
+    const department = sheet.getRange(row, 3).getValue();// Column C
+    const course = sheet.getRange(row, 4).getValue(); //Column D
+    const year = sheet.getRange(row, 6).getValue(); //Column F
+    const startTime = sheet.getRange(row, 5).getValue(); // Column E
+    const date = sheet.getRange(row, 10).getValue(); // Column J
+
+    // Combine date and time for the start
+    const startDateTime = new Date(`${date}T${startTime}`);
+    const endDateTime = new Date(startDateTime.getTime() + 30 * 60 * 1000);
+
+	const CALENDAR_ID = "longStringOfNumbers@group.calendar.google.com"; // REPLACE with your Calendar ID
+    const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
+
+
+    console.log("Calendar object:", calendar);
+    console.log("Event title:", title);
+    console.log("Start DateTime:", startDateTime);
+    console.log("End DateTime:", endDateTime);
+    console.log("Event description:", department + ' ' + year + ' year, ' + course + ' course in the class of ' + `prof. ${professor}`);
+
+    try {
+      const event = calendar.createEvent(title, startDateTime, endDateTime, {
+        description: department + ' ' + year + ' year, ' + course + ' course in the class of ' + `prof. ${professor}`
+      });
+      console.log("Calendar event created successfully. Event ID:", event.getId());
+    } catch (error) {
+      console.error("Error creating calendar event:", error);
+    }
+  }
+}
