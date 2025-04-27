@@ -1,49 +1,200 @@
-function onEdit(e) {
-  // Check if the event object and its source property are defined
-  if (!e || !e.source) {
-    console.log("onEdit function was triggered without a valid edit event.");
-    return; // Exit the function if there's no valid event
+function checkStatusAndCreateEvents() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('💡CS funnel tracking');
+  if (!sheet) {
+    console.error("Sheet '💡CS funnel tracking' not found.");
+    return;
   }
 
-  const sheet = e.source.getActiveSheet();
-  const editedCell = e.range;
+  const lastColumn = sheet.getLastColumn();
+  let eventIdColumn = lastColumn + 1; // Default: new column after the last
+  let eventIdColumnFound = false;
 
-  // Check if the edited cell is in Column I (Status)
-  if (editedCell.getColumn() !== 9 || sheet.getName() !== '💡CS funnel tracking') return;
+  // Check if an "Event ID" column already exists (case-insensitive)
+  const headerRow = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+  for (let j = 0; j < headerRow.length; j++) {
+    if (headerRow[j].toLowerCase() === "event id") {
+      eventIdColumn = j + 1; // Column index is 1-based
+      eventIdColumnFound = true;
+      break;
+    }
+  }
 
-  const row = editedCell.getRow();
-  const status = editedCell.getValue().toString().toLowerCase();
+  // If "Event ID" column doesn't exist, insert it
+  if (!eventIdColumnFound) {
+    sheet.insertColumnAfter(lastColumn);
+    sheet.getRange(1, eventIdColumn).setValue("Event ID");
+  }
 
-  if (status === 'positive response') {
-    const title = sheet.getRange(row, 8).getValue() + " CS"; // Column H
-    const professor = sheet.getRange(row, 1).getValue(); // Column A
-    const department = sheet.getRange(row, 3).getValue();// Column C
-    const course = sheet.getRange(row, 4).getValue(); //Column D
-    const year = sheet.getRange(row, 6).getValue(); //Column F
-    const startTime = sheet.getRange(row, 5).getValue(); // Column E
-    const date = sheet.getRange(row, 10).getValue(); // Column J
+  const data = sheet.getRange(1, 1, sheet.getLastRow(), Math.max(lastColumn, eventIdColumn + (lastColumn < 11 ? 1 : 0))).getValues(); // Include Event ID and potentially Location
 
-    // Combine date and time for the start
-    const startDateTime = new Date(`${date}T${startTime}`);
-    const endDateTime = new Date(startDateTime.getTime() + 30 * 60 * 1000);
+  const CALENDAR_ID = "longStringOfNumbers@group.calendar.google.com"; // Replace with your Calendar ID
+  const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
+  if (!calendar) {
+    console.error(`Calendar with ID '${CALENDAR_ID}' not found.`);
+    return;
+  }
 
-	const CALENDAR_ID = "longStringOfNumbers@group.calendar.google.com"; // REPLACE with your Calendar ID
-    const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
+  // Start from the second row (assuming headers in the first row)
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const statusColumnIndex = 8; // Column I
+    const locationColumnIndex = 10; // Column K (index 10, 0-based)
+    const location = row[locationColumnIndex] ? row[locationColumnIndex].toString().trim() : '';
 
+    if (row[statusColumnIndex] && row[statusColumnIndex].toString().toLowerCase() === 'positive answer') {
+      const title = row[7] + " CS"; // Column H
+      const professor = row[1];   // Column B
+      const department = row[2];  // Column C
+      const course = row[3];      // Column D
+      const year = row[5];        // Column F
+      const dateTimeValue = row[9]; // Get the value from Column J
+      const eventId = row[eventIdColumn - 1]; // Get Event ID from the new column
 
-    console.log("Calendar object:", calendar);
-    console.log("Event title:", title);
-    console.log("Start DateTime:", startDateTime);
-    console.log("End DateTime:", endDateTime);
-    console.log("Event description:", department + ' ' + year + ' year, ' + course + ' course in the class of ' + `prof. ${professor}`);
+      let dateTimeString;
+      if (dateTimeValue instanceof Date) {
+        const formattedDate = Utilities.formatDate(dateTimeValue, ss.getSpreadsheetTimeZone(), 'dd.MM.yyyy');
+        let formattedTime = Utilities.formatDate(dateTimeValue, ss.getSpreadsheetTimeZone(), 'HH:mm');
+        dateTimeString = `${formattedDate} ${formattedTime}`;
+      } else if (typeof dateTimeValue === 'string' && dateTimeValue.trim() !== "") {
+        dateTimeString = dateTimeValue;
+      } else {
+        console.warn(`Date/Time missing or invalid in row ${i + 1}, cannot create event.`);
+        continue;
+      }
 
-    try {
-      const event = calendar.createEvent(title, startDateTime, endDateTime, {
-        description: department + ' ' + year + ' year, ' + course + ' course in the class of ' + `prof. ${professor}`
-      });
-      console.log("Calendar event created successfully. Event ID:", event.getId());
-    } catch (error) {
-      console.error("Error creating calendar event:", error);
+      if (dateTimeString) {
+        try {
+          let datePart = null;
+          let timePart = null;
+
+          const parts = dateTimeString.split(' ');
+          if (parts.length === 2) {
+            datePart = parts[0];
+            timePart = parts[1];
+          } else if (parts.length === 1) {
+            if (parts[0].includes(':') || parts[0].includes('.')) {
+              timePart = parts[0];
+              const today = new Date();
+              datePart = `${today.getDate().toString().padStart(2, '0')}.${(today.getMonth() + 1).toString().padStart(2, '0')}.${today.getFullYear()}`;
+            } else if (parts[0].includes('.') || parts[0].includes('/')) {
+              datePart = parts[0];
+              timePart = '00:00';
+            }
+          }
+
+          if (datePart) {
+            const dateSeparators = ['.', '/'];
+            let dateParts = null;
+            for (const sep of dateSeparators) {
+              if (datePart.includes(sep)) {
+                dateParts = datePart.split(sep);
+                break;
+              }
+            }
+
+            let yearNum = new Date().getFullYear();
+            let month = 0;
+            let day = 0;
+
+            if (dateParts && dateParts.length >= 2) {
+              day = parseInt(dateParts[0], 10) || 1;
+              month = parseInt(dateParts[1], 10) - 1 || 0;
+              if (dateParts.length === 3) {
+                yearNum = parseInt(dateParts[2], 10) || yearNum;
+              } else if (dateParts.length === 2) {
+                yearNum = new Date().getFullYear();
+              }
+            }
+
+            let hour = 0;
+            let minute = 0;
+            let second = 0;
+
+            if (timePart) {
+              const timeSeparators = [':', '.'];
+              let timeParts = null;
+              for (const sep of timeSeparators) {
+                if (timePart.includes(sep)) {
+                  timeParts = timePart.split(sep);
+                  break;
+                }
+              }
+              if (timeParts && timeParts.length >= 2) {
+                hour = parseInt(timeParts[0], 10) || 0;
+                minute = parseInt(timeParts[1], 10) || 0;
+                second = parseInt(timeParts[2], 10) || 0;
+              }
+            }
+
+            if (day > 0 && month >= 0) {
+              const startDateTime = new Date(yearNum, month, day, hour, minute, second);
+              const endDateTime = new Date(startDateTime.getTime() + 30 * 60 * 1000);
+              const description = `${department} ${year} year, ${course} course in the class of prof. ${professor}`;
+              const eventOptions = { description: description };
+              if (location) {
+                eventOptions.location = location;
+              }
+
+              let event;
+              let updateOccurred = false;
+              if (eventId) {
+                try {
+                  event = calendar.getEventById(eventId);
+                  if (event) {
+                    const oldTitle = event.getTitle();
+                    const oldDescription = event.getDescription();
+                    const oldStartTime = event.getStartTime();
+                    const oldEndTime = event.getEndTime();
+                    const oldLocation = event.getLocation();
+
+                    if (title !== oldTitle || description !== oldDescription || startDateTime.getTime() !== oldStartTime.getTime() || endDateTime.getTime() !== oldEndTime.getTime() || location !== oldLocation) {
+                      event.setTitle(title);
+                      event.setDescription(description);
+                      event.setTime(startDateTime, endDateTime);
+                      if (location !== oldLocation) {
+                        event.setLocation(location);
+                      }
+                      console.log(`Event updated for row ${i + 1}: ${title} - ${eventId}`);
+                      updateOccurred = true;
+                    } else {
+                      console.log(`No changes detected for event in row ${i + 1}: ${title} - ${eventId}`);
+                    }
+                  } else {
+                    console.log(`Event with ID ${eventId} not found, checking for duplicates to create new.`);
+                  }
+                } catch (e) {
+                  console.warn(`Error getting event with ID ${eventId}: ${e}. Checking for duplicates to create new.`);
+                  event = null;
+                }
+              }
+
+              if (!event) {
+                const existingEvents = calendar.getEvents(startDateTime, endDateTime, { search: title });
+                if (existingEvents.length > 0) {
+                  console.log(`Duplicate event(s) found for row ${i + 1}: ${title} at ${startDateTime}, not creating new.`);
+                } else {
+                  event = calendar.createEvent(title, startDateTime, endDateTime, eventOptions);
+                  sheet.getRange(i + 1, eventIdColumn).setValue(event.getId());
+                  console.log(`Calendar event created for row ${i + 1}: ${title} - ${event.getId()}`);
+                }
+              } else if (!updateOccurred && eventId) {
+                // Log if an event was found by ID but no update was needed
+                // This prevents redundant "no changes" logs when a new event was just created
+              }
+
+            } else {
+              console.warn(`Invalid Date format in row ${i + 1}: ${dateTimeString}`);
+            }
+          } else {
+            console.warn(`Date information missing or invalid in row ${i + 1}: ${dateTimeString}`);
+          }
+        } catch (error) {
+          console.error(`Error processing row ${i + 1}: ${error}`);
+        }
+      } else {
+        console.warn(`Date/Time missing or invalid in row ${i + 1}, cannot create event.`);
+      }
     }
   }
 }
