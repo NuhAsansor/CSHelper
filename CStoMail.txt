@@ -110,7 +110,7 @@ function processEmail(language) {
   }
 
   // Define the CC email address
-  var ccEmail = 'kuzeykoru@aiesec.net'; // Using a different CC address as requested
+  var ccEmail = 'ccMail.address@aiesec.it'; // Replace with the mail you'd like to put to CC
 
   // Compose the email body based on the selected language
   var body;
