@@ -1,0 +1,72 @@
+Okay, let's create a detailed instruction set for your current "CS Mail Actions" script, following the format you provided.
+
+```
+# Google Apps Script for Preparing Gmail Drafts from Google Sheets
+
+This script automates the process of preparing Gmail drafts based on data in a specified Google Sheet. It allows users to select a row and generate a pre-filled email draft in either English or Italian.
+
+## Overview
+
+The script adds a custom menu to your Google Sheet titled "CS Mail Actions". This menu contains an option "Prepare CS mail Draft". When this option is selected, the script prompts the user to choose the language for the email. Based on the selected language and data from the chosen row, it constructs a Gmail compose URL with the recipient, subject, and body pre-filled.
+
+The script is designed to streamline the process of sending out formal requests to professors based on information stored in the sheet.
+
+## Key Features
+
+* **Custom Menu:** Adds a user-friendly menu to the Google Sheet.
+* **Language Selection:** Prompts the user to choose between English and Italian email templates.
+* **Data Extraction:** Reads relevant data (Professor's Email, Course, Responsible Person, Lesson Date) from the selected row.
+* **Intelligent Name Parsing:** Attempts to extract the professor's first and last name from the email address, handling two common formats:
+    * Uppercase "SURNAME FIRSTNAME OTHERNAMES" (separated by spaces).
+    * "word1.word2" or "word1.word2" (before @ symbol, separated by a dot).
+* **Gender-Neutral Addressing (Italian):** Uses "Gentile Prof." for the salutation in Italian emails.
+* **Pre-filled Gmail Draft:** Generates a Gmail compose URL with the "To", "CC", "Subject", and "Body" fields populated.
+* **User Feedback:** Displays an alert box containing the generated Gmail draft link for easy copying.
+
+## Setup
+
+1.  **Open your Google Sheet:** Navigate to the Google Sheet containing your data.
+2.  **Open the Script Editor:** Go to "Extensions" > "Apps Script".
+3.  **Copy and Paste the Code:** Replace any existing code in the Script Editor with the provided script.
+4.  **Review Column Definitions:** Ensure that the column indices in the `processEmail` function match the layout of your sheet:
+    * `professorMailColumn = 2;` // Column B (Professor's Email)
+    * `courseColumn = 4;`       // Column D (Course Name)
+    * `responsibleColumn = 8;`  // Column H (Responsible Person's Name)
+    * `dateColumn = 10;`        // Column J (Lesson Date)
+    Adjust these values if your columns are different.
+5.  **Update CC Email (Optional):** Modify the `ccEmail` variable in the `processEmail` function if you need a different default CC address:
+    ```javascript
+    var ccEmail = 'kuzeykoru@aiesec.net'; // CC email address
+    ```
+6.  **Save the Script:** Click the save icon (floppy disk) and give your script a name (e.g., `CS Mailer`).
+7.  **Authorize the Script:** When you run the script for the first time (by selecting "Prepare CS mail Draft" from the custom menu), you will be asked to authorize it to access your Google Sheet and your Gmail (to open the compose window). Follow the on-screen instructions to grant the necessary permissions.
+
+## Column Configuration
+
+The script relies on the following column layout in your Google Sheet:
+
+| Column | Letter | Description                     | Example Data                      |
+| :----- | :----- | :------------------------------ | :-------------------------------- |
+| 2      | B      | Professor's Email               | emanueleluigi.carniel@unipd.it    |
+| 4      | D      | Course Name                     | ARCHEOLOGIA DELLA PRODUZIONE     |
+| 8      | H      | Responsible Person's Name       | Hashir                            |
+| 10     | J      | Lesson Date (various formats) | 29-04-2025, 29.04.2025 12:30     |
+| ...    | ...    | ...                             | ...                               |
+
+**Important:** The script extracts the professor's name from the "Professor's Email" column (Column B). Ensure the email addresses in this column either follow the uppercase "SURNAME FIRSTNAME..." format or the "word1.word2" format (before the "@").
+
+## Usage
+
+1.  **Open your Google Sheet.**
+2.  **Select a single row** containing the data you want to use for the email draft. Make sure you select a data row (below any header rows).
+3.  **Navigate to the custom menu "CS Mail Actions"** in the Google Sheet's menu bar.
+4.  **Click "Prepare CS mail Draft".**
+5.  **A prompt will appear asking you to choose the email language.** Enter "en" for English or "it" for Italian and click "OK". If you click "Cancel" or enter an invalid language, the script will stop.
+6.  **An alert box will appear containing a link to the pre-filled Gmail draft.**
+7.  **Click "OK" on the alert.**
+8.  **Copy the link** from the alert box (Ctrl+C or Cmd+C / Cmd+C).
+9.  **Paste the link** into your web browser's address bar and press Enter. This will open a new Gmail compose window with the "To", "CC", "Subject", and "Body" fields pre-filled according to the data in the selected row and the chosen language.
+10. **Review the draft and send it.**
+
+This documentation should provide a clear understanding of how the script works and how to use it effectively.
+```
