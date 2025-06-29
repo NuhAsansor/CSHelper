@@ -1,0 +1,20 @@
+// CSOptionsMenu.gs
+
+function onOpen() {
+  SpreadsheetApp.getUi()
+      .createMenu('CS Options')
+      .addSubMenu(SpreadsheetApp.getUi()
+          .createMenu('Send CS Mails')
+          .addItem('CS Booking', 'callCreateGmailDraftBooking')
+          .addItem('CS Follow-Up', 'callCreateGmailDraftFollowUp'))
+      .addItem('Sync Calendar', 'checkStatusAndCreateEvents')
+      .addToUi();
+}
+
+function callCreateGmailDraftBooking() {
+  createGmailDraft('booking');
+}
+
+function callCreateGmailDraftFollowUp() {
+  createGmailDraft('follow_up');
+}
