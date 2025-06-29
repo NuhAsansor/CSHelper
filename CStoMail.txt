@@ -1,18 +1,32 @@
-function onOpen() {
-  SpreadsheetApp.getUi()
-      .createMenu('CS Mail Actions')
-      .addItem('Prepare CS mail Draft', 'createGmailDraftFromSelectedRow')
-      .addToUi();
-}
 
-function createGmailDraftFromSelectedRow() {
+//TEMPLATE VARIABLES
+
+const BOOKING_EN_TEMPLATE = `Dear Professor {{professorLastName}},\n\nMy name is {{responsibleName}}, a student at the University of Padua and member of AIESEC in Padova.\n\nAIESEC is the biggest youth organisation in the world present in more than 100 different countries: we propose international volunteering and internship projects for university students so that they can put into practical use the knowledge that they acquired during their studies.\n\nI write, therefore, to kindly ask for the willingness to give us five minutes at the beginning or the mid-break (if you have one) of your lesson of \n\n{{course}}\nOf the day {{formattedDate}} between {{lessonHours}}\n\nI would be grateful if you could let me know if you are available and if the day I suggested might work in order to present this opportunity to your students.\n\nFor additional information you might check our site: www.aiesec.it but, in any case, I’m always available for a clarifying interview.\n\nWhile waiting for your answer, thank you for your attention.\n\nWarm regards,\n\n{{responsibleName}}`;
+
+const BOOKING_IT_TEMPLATE = `Gentile professor {{professorLastName}},\n\nMi chiamo {{responsibleName}} e, oltre ad essere uno studente iscritto all'università di Padova, sono un membro di AIESEC in Padova.\n\nAIESEC è la più grande organizzazione giovanile al mondo, presente in oltre 100 paesi: proponiamo agli studenti dei progetti di volontariato e di tirocinio agli studenti, affinchè possano mettere in pratica quanto appreso duranti gli studi.\n\nLe scrivo, per chiederLe gentilmente 5 minuti all'inizio della Sua lezione di \n\n{{course}}\nDel giorno {{formattedDate}} tra le ore {{lessonHours}}\n\nLe sarei grato se potesse far sapere se può concederci questo spazio e se l'orario e la data da me proposti possano andarLe bene.\n\nPer ulteriori informazioni, può visitare il nostro sito: www.aiesec.it. ma, in ogni caso, rimango a Sua totale disposizione per eventuali chiarimenti.\n\nIn attesa di una Sua cortese risposta, La ringrazio per l'attenzione.\n\nCordiali saluti,\n\n{{responsibleName}}`;
+
+const FOLLOW_UP_EN_TEMPLATE = `Dear Professor {{professorLastName}},\n\nI hope this message finds you well. I am following up on my email from a few days ago regarding our request to briefly present AIESEC's international volunteering and internship opportunities at the start of your upcoming class on {{formattedDate}} between {{lessonHours}}.\n\nAs a member of AIESEC at the University of Padua, I am enthusiastic about sharing these initiatives with students who may be interested in gaining practical, international experience. We would be grateful if you could let us know if a few minutes at the beginning of class might be possible, or if there is another suitable time that may work.\n\nThank you very much for considering this opportunity, and please do not hesitate to reach out if you need any additional information.\n\nCordially,\n\n{{responsibleName}}`;
+
+
+const FOLLOW_UP_IT_TEMPLATE = `Gentile professor {{professorLastName}},\n\nSpero che questo messaggio la trovi bene; qualche giorno fa Le ho inviato una mail in cui le chiedevo 5 minuti del suo tempo all'inizio della sua lezione di \n\n{{course}}\nDel giorno {{formattedDate}} tra le ore {{lessonHours}}\n\ncon lo scopo di presentare i progetti di volontariato e tirocinio di AIESEC.\n\nCome membro di AIESEC e dell'Università di Padova, sono entusiasta nel promuovere le nostre attività con altri studenti che potrebbero essere interessati ad esperienze internazionali.\n\nLe saremo davvero grati se ci potesse far sapere se La richiesta possa andarLe bene.\n\nLa ringrazio ancora per aver considerato questa opportunità e rimango a sua totale disposizione per eventuali chiarimenti.\n\nCordialmente,\n\n{{responsibleName}}`;
+
+
+const TEMPLATE_PLACEHOLDERS = [
+  "{{professorLastName}}",
+  "{{responsibleName}}",
+  "{{course}}",
+  "{{formattedDate}}",
+  "{{lessonHours}}"
+];
+
+function createGmailDraft(templateType) {
   var ui = SpreadsheetApp.getUi();
 
   // Ask the user to choose the language using a prompt
   var result = ui.prompt(
-      'Choose Email Language',
-      'Enter "en" for English or "it" for Italian:',
-      ui.ButtonSet.OK_CANCEL
+    'Choose Email Language',
+    'Enter "en" for English or "it" for Italian:',
+    ui.ButtonSet.OK_CANCEL
   );
 
   var language = '';
@@ -22,11 +36,11 @@ function createGmailDraftFromSelectedRow() {
       ui.alert('Invalid language entered. Please try again.');
       return;
     }
-    processEmail(language);
+    processEmail(templateType, language); // Now passing templateType
   }
 }
 
-function processEmail(language) {
+function processEmail(templateType, language) {
   var ui = SpreadsheetApp.getUi();
 
   // Get the active spreadsheet
@@ -52,46 +66,102 @@ function processEmail(language) {
   var dateColumn = 10;        // Column J
 
   // Get the data from the selected row
-  var professorMail = sheet.getRange(rowNumber, professorMailColumn).getValue();
+  var professorMailInput = sheet.getRange(rowNumber, professorMailColumn).getValue();
   var course = sheet.getRange(rowNumber, courseColumn).getValue();
   var responsibleName = sheet.getRange(rowNumber, responsibleColumn).getValue();
   var lessonDate = sheet.getRange(rowNumber, dateColumn).getValue();
-  var professorNamePart = professorMail.split('@')[0]; // Get the part before the @
 
-  var professorFirstName = '';
-  var professorLastName = '';
+  var recipientEmails = [];
+  var salutationLastNameString = '';
 
-  if (professorNamePart.includes('.')) {
-    // Handle format word1.word2 or word1.word2 (before @)
-    var nameParts = professorNamePart.split('.');
+  // Handle multiple professors (SURNAME1 NAME1 & SURNAME2 NAME2 format)
+  var professorEntries = professorMailInput.split(' & ');
+  var salutationLastNames = [];
+  professorEntries.forEach(function(entry) {
+    var nameParts = entry.split(' ');
     if (nameParts.length >= 2) {
-      professorFirstName = nameParts[0].toLowerCase().charAt(0).toUpperCase() + nameParts[0].toLowerCase().slice(1);
-      professorLastName = nameParts[1].toLowerCase().charAt(0).toUpperCase() + nameParts[1].toLowerCase().slice(1);
+      var lastName = nameParts[0].toLowerCase();
+      var firstName = nameParts.slice(1).join(' ').toLowerCase();
+      recipientEmails.push(firstName + '.' + lastName + '@unipd.it');
+      salutationLastNames.push(lastName.charAt(0).toUpperCase() + lastName.slice(1));
     } else if (nameParts.length === 1) {
-      professorLastName = nameParts[0].toLowerCase().charAt(0).toUpperCase() + nameParts[0].toLowerCase().slice(1);
+      var lastName = nameParts[0].toLowerCase();
+      recipientEmails.push('.' + lastName + '@unipd.it'); // Handle case with only a surname
+      salutationLastNames.push(lastName.charAt(0).toUpperCase() + lastName.slice(1));
     }
-  } else {
-    // Handle the uppercase SURNAME FIRSTNAME ... format
-    var nameParts = professorNamePart.split(' ');
-    professorLastName = nameParts[0] ? nameParts[0].toLowerCase().charAt(0).toUpperCase() + nameParts[0].toLowerCase().slice(1) : '';
-    professorFirstName = nameParts[1] ? nameParts[1].toLowerCase().charAt(0).toUpperCase() + nameParts[1].toLowerCase().slice(1) : '';
-    if (nameParts.length > 2) {
-      professorFirstName += ' ' + nameParts.slice(2).map(function(name) {
-        return name.toLowerCase().charAt(0).toUpperCase() + name.toLowerCase().slice(1);
-      }).join(' ');
-    }
-  }
+  });
 
-  var professorFullName = professorFirstName ? professorFirstName + ' ' + professorLastName : professorLastName;
+  var recipientEmailString = recipientEmails.join(', ');
+  salutationLastNameString = salutationLastNames.join(' and ');
 
   // Format the date as DD-MM-YYYY
   var formattedDate = Utilities.formatDate(lessonDate, Session.getTimeZone(), 'dd-MM-yyyy');
 
   // Extract the time part (HH:MM) from the lessonDate
-  var lessonTimeString = Utilities.formatDate(lessonDate, Session.getTimeZone(), 'HH:mm');
+  var lessonHours = formatLessonHours(lessonDate);
 
-  // Assume a 2-hour lecture duration if no end time is specified
-  var lessonHours;
+  // Define the CC email address
+  var ccEmail = 'koru.kuzey@aiesec.it'; // Using a different CC address as requested
+
+  // Get the email body from the template
+  var templateArgs = {
+    professorLastName: salutationLastNameString, // Using the combined salutation for template
+    responsibleName: responsibleName,
+    course: course,
+    formattedDate: formattedDate,
+    lessonHours: lessonHours
+  };
+  var body = getEmailBodyFromTemplate(templateType, language, templateArgs);
+
+  if (body) {
+    var subject = '';
+    if (templateType === 'booking') {
+      subject = (language === 'en') ? 'Formal Request' : 'Richiesta Formale';
+    } else if (templateType === 'follow_up') {
+      subject = (language === 'en') ? 'Follow up on the request' : 'Seguito alla richiesta';
+    }
+
+    var gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(recipientEmailString) +
+                   '&cc=' + encodeURIComponent(ccEmail) +
+                   '&su=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+
+    ui.alert(
+        'Gmail Draft Link',
+        'Copy the following link and paste it into your browser to open the pre-filled email:\n\n' + gmailUrl,
+        ui.ButtonSet.OK
+    );
+  } else {
+    ui.alert('Error composing email body. Please check the templates in TemplateVariables.gs.');
+  }
+}
+
+function getEmailBodyFromTemplate(templateType, language, templateArgs) {
+  var template = '';
+  if (templateType === 'booking' && language === 'en') {
+    template = BOOKING_EN_TEMPLATE;
+  } else if (templateType === 'booking' && language === 'it') {
+    template = BOOKING_IT_TEMPLATE;
+  } else if (templateType === 'follow_up' && language === 'en') {
+    template = FOLLOW_UP_EN_TEMPLATE;
+  } else if (templateType === 'follow_up' && language === 'it') {
+    template = FOLLOW_UP_IT_TEMPLATE;
+  } else {
+    Logger.log('Invalid template type or language: ' + templateType + ', ' + language);
+    return null;
+  }
+
+  // Replace placeholders in the template with the provided arguments
+  var message = template.replace(/{{professorLastName}}/g, templateArgs.professorLastName)
+                        .replace(/{{responsibleName}}/g, templateArgs.responsibleName)
+                        .replace(/{{course}}/g, templateArgs.course)
+                        .replace(/{{formattedDate}}/g, templateArgs.formattedDate)
+                        .replace(/{{lessonHours}}/g, templateArgs.lessonHours);
+
+  return message;
+}
+
+function formatLessonHours(lessonDate) {
+  var lessonTimeString = Utilities.formatDate(lessonDate, Session.getTimeZone(), 'HH:mm');
   if (lessonTimeString.indexOf('-') === -1) {
     var startTimeParts = lessonTimeString.split(':');
     if (startTimeParts.length === 2 && !isNaN(parseInt(startTimeParts[0])) && !isNaN(parseInt(startTimeParts[1]))) {
@@ -101,53 +171,8 @@ function processEmail(language) {
       var endMinute = startMinute;
       var formattedEndHour = (endHour % 24).toString().padStart(2, '0');
       var formattedEndMinute = endMinute.toString().padStart(2, '0');
-      lessonHours = lessonTimeString + '-' + formattedEndHour + ':' + formattedEndMinute;
-    } else {
-      lessonHours = lessonTimeString;
+      return lessonTimeString + '-' + formattedEndHour + ':' + formattedEndMinute;
     }
-  } else {
-    lessonHours = lessonTimeString;
   }
-
-  // Define the CC email address
-  var ccEmail = 'ccMail.address@aiesec.it'; // Replace with the mail you'd like to put to CC
-
-  // Compose the email body based on the selected language
-  var body;
-  if (language === 'en') {
-    body = 'Dear Professor ' + professorLastName + ',\n\n' +
-           'My name is ' + responsibleName + ', a student at the University of Padua and member of AIESEC in Padova.\n\n' +
-           'AIESEC is the biggest youth organisation in the world present in more than 100 different countries: we propose international volunteering and internship projects for university students so that they can put into practical use the knowledge that they acquired during their studies.\n\n' +
-           'I write, therefore, to kindly ask for the willingness to give us five minutes at the beginning or the mid-break (if you have one) of your lesson of \n\n' + course + '\nOf the day ' + formattedDate + ' between ' + lessonHours + '\n\n' +
-           'I would be grateful if you could let me know if you are available and if the day I suggested might work in order to present this opportunity to your students.\n\n' +
-           'For additional information you might check our site: www.aiesec.it but, in any case, I’m always available for a clarifying interview.\n\n' +
-           'While waiting for your answer, thank you for your attention.\n\n' +
-           'Warm regards,\n\n' +
-           '' + responsibleName;
-  } else if (language === 'it') {
-    body = 'Gentile Prof. ' + professorLastName + ',\n\n' +
-           'Mi chiamo ' + responsibleName + ', sono una studentessa dell\'Università di Padova e membro di AIESEC a Padova.\n\n' +
-           'AIESEC è la più grande organizzazione giovanile al mondo, presente in oltre 100 paesi: proponiamo progetti internazionali di volontariato e tirocinio per studenti universitari, offrendo loro l\'opportunità di mettere in pratica le conoscenze acquisite durante gli studi.\n\n' +
-           'Le scrivo, quindi, per chiederLe gentilmente la disponibilità a concederci cinque minuti all\'inizio o durante la pausa (se prevista) della Sua lezione di \n\n' + course + '\nDel giorno ' + formattedDate + ' tra le ore ' + lessonHours + '\n\n' +
-           'Le sarei grato/a se potesse farmi sapere se è disponibile e se il giorno che Le ho indicato potrebbe andar bene per presentare questa opportunità ai Suoi studenti.\n\n' +
-           'Per maggiori informazioni, può consultare il nostro sito web: www.aiesec.it. In ogni caso, resto a Sua completa disposizione per un colloquio chiarificatore.\n\n' +
-           'In attesa di una Sua cortese risposta, La ringrazio per l\'attenzione.\n\n' +
-           'Cordiali saluti,\n\n' +
-           '' + responsibleName;
-  } else {
-    ui.alert('Invalid language selected.');
-    return;
-  }
-
-  // Construct the Gmail compose URL
-  var gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(professorMail) +
-                 '&cc=' + encodeURIComponent(ccEmail) +
-                 '&su=' + encodeURIComponent('Formal Request') + '&body=' + encodeURIComponent(body);
-
-  // Show an alert with the link
-  ui.alert(
-      'Gmail Draft Link',
-      'Copy the following link and paste it into your browser to open the pre-filled email:\n\n' + gmailUrl,
-      ui.ButtonSet.OK
-  );
+  return lessonTimeString;
 }
