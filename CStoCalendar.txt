@@ -1,34 +1,37 @@
+// *** TOGGLE TO CHECK ALL ROWS (TRUE) OR ONLY NOT DONE (FALSE) ***
+const checkAll = true;
+
+// In your CStoCalendar.gs file (below onOpen() and before/in checkStatusAndCreateEvents())
+// Helper function to convert column letter to index (1-based)
+function letterToColumnIndex(letter) {
+  let column = 0, i, len;
+  for (i = 0, len = letter.length; i < len; i++) {
+    column = (column * 26) + (letter.charCodeAt(i) - 64);
+  }
+  return column;
+}
+
 function checkStatusAndCreateEvents() {
+  // *** SPECIFY THE EVENT ID COLUMN HERE ***
+  const EVENT_ID_COLUMN_LETTER = "O";
+  const EVENT_ID_COLUMN_INDEX = letterToColumnIndex(EVENT_ID_COLUMN_LETTER); // 1-based index
+
+  // *** SPECIFY THE "DONE" CHECKBOX COLUMN HERE  ***
+  const PRESENTATION_DONE_COLUMN_LETTER = "L";
+  const PRESENTATION_DONE_COLUMN_INDEX = letterToColumnIndex(PRESENTATION_DONE_COLUMN_LETTER); // 1-based index
+
+  const SHEET_NAME = '💡CS funnel tracking';
+  const CALENDAR_ID = "aBunchOfNumbers@group.calendar.google.com"; // Replace with your Calendar ID
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('💡CS funnel tracking');
+  const sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) {
-    console.error("Sheet '💡CS funnel tracking' not found.");
+    console.error(`Sheet '${SHEET_NAME}' not found.`);
     return;
   }
 
   const lastColumn = sheet.getLastColumn();
-  let eventIdColumn = lastColumn + 1; // Default: new column after the last
-  let eventIdColumnFound = false;
-
-  // Check if an "Event ID" column already exists (case-insensitive)
-  const headerRow = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
-  for (let j = 0; j < headerRow.length; j++) {
-    if (headerRow[j].toLowerCase() === "event id") {
-      eventIdColumn = j + 1; // Column index is 1-based
-      eventIdColumnFound = true;
-      break;
-    }
-  }
-
-  // If "Event ID" column doesn't exist, insert it
-  if (!eventIdColumnFound) {
-    sheet.insertColumnAfter(lastColumn);
-    sheet.getRange(1, eventIdColumn).setValue("Event ID");
-  }
-
-  const data = sheet.getRange(1, 1, sheet.getLastRow(), Math.max(lastColumn, eventIdColumn + (lastColumn < 11 ? 1 : 0))).getValues(); // Include Event ID and potentially Location
-
-  const CALENDAR_ID = "longStringOfNumbers@group.calendar.google.com"; // Replace with your Calendar ID
+  const data = sheet.getRange(1, 1, sheet.getLastRow(), Math.max(lastColumn, Math.max(EVENT_ID_COLUMN_INDEX, PRESENTATION_DONE_COLUMN_INDEX))).getValues(); // Include relevant columns
   const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
   if (!calendar) {
     console.error(`Calendar with ID '${CALENDAR_ID}' not found.`);
@@ -38,18 +41,25 @@ function checkStatusAndCreateEvents() {
   // Start from the second row (assuming headers in the first row)
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
-    const statusColumnIndex = 8; // Column I
-    const locationColumnIndex = 10; // Column K (index 10, 0-based)
+    const statusColumnIndex = 8; // Column I (0-based index 8)
+    const locationColumnIndex = 10; // Column K (0-based index 10)
     const location = row[locationColumnIndex] ? row[locationColumnIndex].toString().trim() : '';
+    const eventId = row[EVENT_ID_COLUMN_INDEX - 1]; // Get Event ID from the specified column (adjust to 0-based)
+    const presentationDone = row[PRESENTATION_DONE_COLUMN_INDEX - 1]; // Get status from the "Done" checkbox column (adjust to 0-based)
+
+    // Apply filter based on checkAll flag
+    if (!checkAll && presentationDone === true) {
+      console.log(`Skipping row ${i + 1} because presentation is marked as done.`);
+      continue;
+    }
 
     if (row[statusColumnIndex] && row[statusColumnIndex].toString().toLowerCase() === 'positive answer') {
-      const title = row[7] + " CS"; // Column H
-      const professor = row[1];   // Column B
-      const department = row[2];  // Column C
-      const course = row[3];      // Column D
-      const year = row[5];        // Column F
-      const dateTimeValue = row[9]; // Get the value from Column J
-      const eventId = row[eventIdColumn - 1]; // Get Event ID from the new column
+      const title = row[7] + " CS"; // Column H (0-based index 7)
+      const professor = row[1];   // Column B (0-based index 1)
+      const department = row[2];  // Column C (0-based index 2)
+      const course = row[3];      // Column D (0-based index 3)
+      const year = row[5];        // Column F (0-based index 5)
+      const dateTimeValue = row[9]; // Get the value from Column J (0-based index 9)
 
       let dateTimeString;
       if (dateTimeValue instanceof Date) {
@@ -161,28 +171,28 @@ function checkStatusAndCreateEvents() {
                       console.log(`No changes detected for event in row ${i + 1}: ${title} - ${eventId}`);
                     }
                   } else {
-                    console.log(`Event with ID ${eventId} not found, checking for duplicates to create new.`);
+                    console.log(`Event with ID ${eventId} not found in calendar, creating new.`);
+                    event = calendar.createEvent(title, startDateTime, endDateTime, eventOptions);
+                    sheet.getRange(i + 1, EVENT_ID_COLUMN_INDEX).setValue(event.getId()); // Use 1-based index for setRange
+                    console.log(`Calendar event created for row ${i + 1}: ${title} - ${event.getId()}`);
                   }
                 } catch (e) {
-                  console.warn(`Error getting event with ID ${eventId}: ${e}. Checking for duplicates to create new.`);
-                  event = null;
+                  console.warn(`Error getting event with ID ${eventId}: ${e}. Creating new event.`);
+                  event = calendar.createEvent(title, startDateTime, endDateTime, eventOptions);
+                  sheet.getRange(i + 1, EVENT_ID_COLUMN_INDEX).setValue(event.getId()); // Use 1-based index for setRange
+                  console.log(`Calendar event created for row ${i + 1} after error: ${title} - ${event.getId()}`);
                 }
-              }
-
-              if (!event) {
+              } else {
+                // No Event ID in the sheet, create a new event
                 const existingEvents = calendar.getEvents(startDateTime, endDateTime, { search: title });
                 if (existingEvents.length > 0) {
                   console.log(`Duplicate event(s) found for row ${i + 1}: ${title} at ${startDateTime}, not creating new.`);
                 } else {
                   event = calendar.createEvent(title, startDateTime, endDateTime, eventOptions);
-                  sheet.getRange(i + 1, eventIdColumn).setValue(event.getId());
+                  sheet.getRange(i + 1, EVENT_ID_COLUMN_INDEX).setValue(event.getId()); // Use 1-based index for setRange
                   console.log(`Calendar event created for row ${i + 1}: ${title} - ${event.getId()}`);
                 }
-              } else if (!updateOccurred && eventId) {
-                // Log if an event was found by ID but no update was needed
-                // This prevents redundant "no changes" logs when a new event was just created
               }
-
             } else {
               console.warn(`Invalid Date format in row ${i + 1}: ${dateTimeString}`);
             }
@@ -198,3 +208,4 @@ function checkStatusAndCreateEvents() {
     }
   }
 }
+
